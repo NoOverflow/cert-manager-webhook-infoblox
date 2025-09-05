@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"strconv"
@@ -25,8 +26,7 @@ var GroupName = os.Getenv("GROUP_NAME")
 
 func main() {
 	if GroupName == "" {
-		logf.V(logf.ErrorLevel).ErrorS(nil, "No value specified for environment variable 'GROUP_NAME'")
-		panic("environment variable GROUP_NAME must have a value")
+		panic("GROUP_NAME must be specified")
 	}
 
 	// This will register our custom DNS provider with the webhook serving
@@ -77,7 +77,7 @@ type providerConfig struct {
 	Host              string                   `json:"host"`
 	Scheme            string                   `json:"scheme" default:"https"`
 	Port              string                   `json:"port" default:"443"`
-	Version           string                   `json:"version" default:"2.8"`
+	Version           string                   `json:"version" default:"2.13.5"`
 	SslVerify         bool                     `json:"sslVerify" default:"true"`
 	UsernameSecretRef cmmeta.SecretKeySelector `json:"usernameSecretRef"`
 	PasswordSecretRef cmmeta.SecretKeySelector `json:"passwordSecretRef"`
@@ -114,6 +114,9 @@ func (s *solver) Present(ch *v1alpha1.ChallengeRequest) error {
 	name := strings.TrimSuffix(ch.ResolvedFQDN, ".")
 
 	reference, err := s.checkForRecord(c, cfg.View, name, ch.Key)
+	if err != nil {
+		logf.V(logf.InfoLevel).InfoS("Error checking for existing record", "name", name, "error", err)
+	}
 
 	// Create a record in the DNS provider's console if none exist
 	if reference != "" {
@@ -153,7 +156,7 @@ func (s *solver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 
 	reference, err := s.checkForRecord(c, cfg.View, name, ch.Key)
 	if err != nil {
-		logf.V(logf.InfoLevel).InfoS("There was an error when checking if record already exist", "name", name, "reference", reference)
+		logf.V(logf.InfoLevel).InfoS("There was an error when checking if record already exist", "name", name, "error", err)
 	}
 
 	// Delete the record in the DNS provider's console if it is found
@@ -204,8 +207,7 @@ func loadConfig(cfgJSON *extapi.JSON) (providerConfig, error) {
 		return cfg, nil
 	}
 	if err := json.Unmarshal(cfgJSON.Raw, &cfg); err != nil {
-		logf.V(logf.ErrorLevel).ErrorS(nil, "There was an error decoding the solver config")
-		return cfg, err
+		return cfg, fmt.Errorf("error decoding solver config: %v", err)
 	}
 
 	return cfg, nil
